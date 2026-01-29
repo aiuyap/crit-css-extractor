@@ -7,6 +7,7 @@ const nextConfig = {
         {
           'playwright-core': 'commonjs2 playwright-core',
           '@sparticuz/chromium': 'commonjs2 @sparticuz/chromium',
+          'css-tree': 'commonjs css-tree',
         },
       ];
     }
