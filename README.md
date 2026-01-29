@@ -225,6 +225,19 @@ npm run test:unit -- --testNamePattern="specific test name"
 
 See [AGENTS.md](./AGENTS.md) for development guidelines, code conventions, and contributing standards.
 
+## Instructions for running Locally
+
+# 1. Clone the repository
+git clone https://github.com/aiuyap/crit-css-extractor.git
+cd crit-css-extractor
+# 2. Install dependencies
+npm install
+# 3. Install Chromium browser (one-time setup)
+npx playwright install chromium
+# 4. Run the app
+npm run dev
+
+
 ## License
 
 MIT License
