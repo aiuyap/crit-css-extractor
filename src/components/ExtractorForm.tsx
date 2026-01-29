@@ -1,13 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Play, Download, Copy } from 'lucide-react';
+import {
+  Loader2,
+  Play,
+  Download,
+  Copy,
+  Check,
+  Smartphone,
+  Monitor,
+  Layers,
+  Clock,
+  FileCode,
+  AlertCircle,
+  Info,
+} from 'lucide-react';
 
 export interface ExtractionResult {
   success: boolean;
@@ -27,38 +50,119 @@ export interface ExtractionResult {
   };
 }
 
-export default function ExtractorForm() {
-  const [url, setUrl] = useState('');
-  const [viewport, setViewport] = useState<'mobile' | 'desktop' | 'both'>('both');
-  const [includeShadows, setIncludeShadows] = useState(false);
+interface FormState {
+  url: string;
+  viewport: 'mobile' | 'desktop' | 'both';
+  includeShadows: boolean;
+}
+
+interface ExtractorFormProps {
+  initialUrl?: string;
+}
+
+export default function ExtractorForm({ initialUrl = '' }: ExtractorFormProps) {
+  const [formState, setFormState] = useState<FormState>({
+    url: initialUrl,
+    viewport: 'both',
+    includeShadows: false,
+  });
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
   const [result, setResult] = useState<ExtractionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'mobile' | 'desktop' | 'combined'>('combined');
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const handleInputChange = useCallback(
+    (field: keyof FormState, value: string | boolean) => {
+      setFormState((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
+
+  const formatBytes = useCallback((bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }, []);
+
+  const formatTime = useCallback((ms: number) => {
+    return (ms / 1000).toFixed(2) + 's';
+  }, []);
+
+  const copyToClipboard = useCallback(async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }, []);
+
+  const downloadCSS = useCallback((css: string, filename: string) => {
+    const blob = new Blob([css], { type: 'text/css' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const simulateProgress = useCallback(async () => {
+    const stages = [
+      { progress: 10, text: 'Initializing browser...' },
+      { progress: 25, text: 'Navigating to URL...' },
+      { progress: 40, text: 'Analyzing page structure...' },
+      { progress: 55, text: 'Extracting mobile styles...' },
+      { progress: 70, text: 'Extracting desktop styles...' },
+      { progress: 85, text: 'Processing and deduplicating...' },
+      { progress: 95, text: 'Finalizing output...' },
+      { progress: 100, text: 'Complete!' },
+    ];
+
+    for (const stage of stages) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      setProgress(stage.progress);
+      setProgressText(stage.text);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!url.trim()) {
+
+    if (!formState.url.trim()) {
       setError('Please enter a valid URL');
+      return;
+    }
+
+    try {
+      new URL(formState.url);
+    } catch {
+      setError('Please enter a valid URL (including https://)');
       return;
     }
 
     setLoading(true);
     setError(null);
     setResult(null);
+    setProgress(0);
+    setProgressText('');
 
     try {
+      await simulateProgress();
+
       const response = await fetch('/api/extract', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url,
-          viewport,
-          includeShadows,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formState),
       });
 
       const data = await response.json();
@@ -69,314 +173,344 @@ export default function ExtractorForm() {
 
       setResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setError(
+        err instanceof Error ? err.message : 'An unknown error occurred'
+      );
     } finally {
       setLoading(false);
+      setProgress(0);
+      setProgressText('');
     }
   };
 
-  const copyToClipboard = async (css: string) => {
-    try {
-      await navigator.clipboard.writeText(css);
-      // Could add a toast notification here
-    } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+  const getViewportIcon = (viewport: string) => {
+    switch (viewport) {
+      case 'mobile':
+        return <Smartphone className="w-4 h-4" />;
+      case 'desktop':
+        return <Monitor className="w-4 h-4" />;
+      default:
+        return <Layers className="w-4 h-4" />;
     }
   };
 
-  const downloadCSS = (css: string, filename: string) => {
-    const blob = new Blob([css], { type: 'text/css' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  const formatTime = (ms: number) => {
-    return (ms / 1000).toFixed(2) + 's';
-  };
+  const renderCodeBlock = (
+    css: string,
+    size: number,
+    extractionTime: number,
+    key: string
+  ) => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="font-mono">
+            {formatBytes(size)}
+          </Badge>
+          <Badge variant="outline">
+            <Clock className="w-3 h-3 mr-1" />
+            {formatTime(extractionTime)}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => copyToClipboard(css, key)}
+            className="h-8 px-2"
+          >
+            {copied === key ? (
+              <Check className="w-4 h-4 text-emerald-500" />
+            ) : (
+              <Copy className="w-4 h-4" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => downloadCSS(css, `critical-${key}.css`)}
+            className="h-8 px-2"
+          >
+            <Download className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+      <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
+        <ScrollArea className="h-80">
+          <pre className="p-4 text-sm font-mono leading-relaxed">
+            <code className="text-foreground/90">{css}</code>
+          </pre>
+        </ScrollArea>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Extraction Form */}
-      <Card>
+    <div className="space-y-6">
+      <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Critical CSS Extractor</CardTitle>
-          <CardDescription>
-            Extract critical CSS above the fold, optimized for Google PageSpeed Insights metrics
-          </CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <FileCode className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle>Extract Critical CSS</CardTitle>
+              <CardDescription>
+                Analyze any URL and extract above-the-fold CSS
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="url">URL</Label>
-              <Input
-                id="url"
-                type="url"
-                placeholder="https://example.com"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={loading}
-                required
-              />
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-3">
+              <Label htmlFor="url" className="text-sm font-medium">
+                Target URL
+              </Label>
+              <div className="relative">
+                <Input
+                  id="url"
+                  type="url"
+                  placeholder="https://example.com"
+                  value={formState.url}
+                  onChange={(e) => handleInputChange('url', e.target.value)}
+                  disabled={loading}
+                  className="h-11 pl-4 pr-4 bg-background/50 border-border/50 focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="viewport">Viewport</Label>
-                <Select value={viewport} onValueChange={(value: any) => setViewport(value)} disabled={loading}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mobile">Mobile (360x640)</SelectItem>
-                    <SelectItem value="desktop">Desktop (1366x768)</SelectItem>
-                    <SelectItem value="both">Both (Mobile + Desktop)</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Viewport</Label>
+                <Tabs
+                  value={formState.viewport}
+                  onValueChange={(value) =>
+                    handleInputChange('viewport', value)
+                  }
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full grid-cols-3 h-11">
+                    <TabsTrigger
+                      value="mobile"
+                      className="h-9"
+                      disabled={loading}
+                    >
+                      <Smartphone className="w-4 h-4 mr-2" />
+                      Mobile
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="desktop"
+                      className="h-9"
+                      disabled={loading}
+                    >
+                      <Monitor className="w-4 h-4 mr-2" />
+                      Desktop
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="both"
+                      className="h-9"
+                      disabled={loading}
+                    >
+                      <Layers className="w-4 h-4 mr-2" />
+                      Both
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </div>
 
-              <div className="space-y-2">
-                <Label>Options</Label>
-                <div className="flex items-center space-x-2 mt-2">
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Options</Label>
+                <div className="flex items-center gap-3 h-11 px-3 rounded-md border border-border/50 bg-background/50">
                   <Checkbox
                     id="shadows"
-                    checked={includeShadows}
-                    onCheckedChange={(checked) => setIncludeShadows(checked as boolean)}
+                    checked={formState.includeShadows}
+                    onCheckedChange={(checked) =>
+                      handleInputChange('includeShadows', checked as boolean)
+                    }
                     disabled={loading}
+                    className="border-primary"
                   />
-                  <Label htmlFor="shadows" className="text-sm">
-                    Include box shadows
+                  <Label htmlFor="shadows" className="text-sm cursor-pointer">
+                    Include box-shadow properties
                   </Label>
                 </div>
               </div>
             </div>
 
-            <Button type="submit" disabled={loading} className="w-full">
+            {loading && (
+              <div className="space-y-3 animate-scale-in">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{progressText}</span>
+                  <span className="font-mono text-primary">{progress}%</span>
+                </div>
+                <Progress value={progress} className="h-2" />
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full h-11 text-base font-medium"
+            >
               {loading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Extracting...
                 </>
               ) : (
                 <>
-                  <Play className="mr-2 h-4 w-4" />
+                  <Play className="w-4 h-4 mr-2" />
                   Extract Critical CSS
                 </>
               )}
             </Button>
-          </form>
 
-          {error && (
-            <div className="mt-4 p-4 bg-destructive/10 border border-destructive/20 rounded-md">
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
+            {error && (
+              <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10 animate-scale-in">
+                <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-destructive">
+                    Extraction Failed
+                  </p>
+                  <p className="text-sm text-destructive/80">{error}</p>
+                </div>
+              </div>
+            )}
+          </form>
         </CardContent>
       </Card>
 
-      {/* Results */}
       {result && result.success && (
-        <Card>
+        <Card className="border-border/50 bg-card/50 backdrop-blur-sm animate-slide-up">
           <CardHeader>
-            <CardTitle>Extraction Results</CardTitle>
-            <CardDescription>
-              URL: {result.url} | Viewport: {result.viewport} | 
-              Processing time: {result.processingTime ? formatTime(result.processingTime) : 'N/A'}
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <Check className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div>
+                  <CardTitle>Extraction Complete</CardTitle>
+                  <CardDescription className="flex items-center gap-2">
+                    <span>{result.url}</span>
+                    <Separator orientation="vertical" className="h-4" />
+                    <span className="flex items-center gap-1">
+                      {getViewportIcon(result.viewport)}
+                      {result.viewport === 'both'
+                        ? 'Mobile + Desktop'
+                        : result.viewport}
+                    </span>
+                  </CardDescription>
+                </div>
+              </div>
+              {result.processingTime && (
+                <Badge variant="success" className="font-mono">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {formatTime(result.processingTime)}
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            {/* Validation messages */}
-            {result.validation && (result.validation.errors.length > 0 || result.validation.warnings.length > 0) && (
-              <div className="mb-4 space-y-2">
-                {result.validation.errors.map((error, index) => (
-                  <div key={index} className="p-2 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
-                    {error}
+            {(result.validation?.errors.length ?? 0) > 0 ||
+            (result.validation?.warnings.length ?? 0) > 0 ? (
+              <div className="space-y-3 mb-6">
+                {result.validation?.errors.map((err, idx) => (
+                  <div
+                    key={`error-${idx}`}
+                    className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/5"
+                  >
+                    <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-sm text-destructive/80">{err}</p>
                   </div>
                 ))}
-                {result.validation.warnings.map((warning, index) => (
-                  <div key={index} className="p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-                    {warning}
+                {result.validation?.warnings.map((warn, idx) => (
+                  <div
+                    key={`warning-${idx}`}
+                    className="flex items-start gap-3 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5"
+                  >
+                    <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-sm text-amber-500/80">{warn}</p>
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
 
-            {/* Tab navigation for 'both' viewport */}
-            {viewport === 'both' && result.mobile && result.desktop ? (
-              <div className="space-y-4">
-                <div className="flex space-x-1 bg-muted p-1 rounded-md">
-                  <Button
-                    variant={activeTab === 'combined' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setActiveTab('combined')}
-                  >
-                    Combined ({formatBytes(result.combined?.size || 0)})
-                  </Button>
-                  <Button
-                    variant={activeTab === 'mobile' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setActiveTab('mobile')}
-                  >
-                        Mobile ({formatBytes((result.mobile?.size || 0))})
-                      </Button>
-                      <Button
-                        variant={activeTab === 'desktop' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setActiveTab('desktop')}
-                      >
-                        Desktop ({formatBytes((result.desktop?.size || 0))})
-                  </Button>
-                </div>
+            {formState.viewport === 'both' &&
+            result.mobile &&
+            result.desktop ? (
+              <Tabs defaultValue="combined" className="w-full">
+                <TabsList className="grid w-full grid-cols-3 h-11 mb-4">
+                  <TabsTrigger value="combined" className="h-9">
+                    <Layers className="w-4 h-4 mr-2" />
+                    Combined
+                    <Badge
+                      variant="secondary"
+                      className="ml-2 font-mono text-xs"
+                    >
+                      {formatBytes(result.combined?.size ?? 0)}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="mobile" className="h-9">
+                    <Smartphone className="w-4 h-4 mr-2" />
+                    Mobile
+                    <Badge
+                      variant="secondary"
+                      className="ml-2 font-mono text-xs"
+                    >
+                      {formatBytes(result.mobile.size)}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="desktop" className="h-9">
+                    <Monitor className="w-4 h-4 mr-2" />
+                    Desktop
+                    <Badge
+                      variant="secondary"
+                      className="ml-2 font-mono text-xs"
+                    >
+                      {formatBytes(result.desktop.size)}
+                    </Badge>
+                  </TabsTrigger>
+                </TabsList>
 
-                {/* Combined CSS */}
-                {activeTab === 'combined' && result.combined && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-medium">Combined CSS</h3>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(result.combined!.css)}
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => downloadCSS(result.combined!.css, 'critical-combined.css')}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          Download
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="relative">
-                      <pre className="bg-muted p-4 rounded-md text-sm overflow-auto max-h-96 whitespace-pre-wrap">
-                        <code>{result.combined.css}</code>
-                      </pre>
-                    </div>
-                  </div>
-                )}
+                <TabsContent value="combined">
+                  {result.combined &&
+                    renderCodeBlock(
+                      result.combined.css,
+                      result.combined.size,
+                      (result.mobile?.extractionTime ?? 0) +
+                        (result.desktop?.extractionTime ?? 0),
+                      'combined'
+                    )}
+                </TabsContent>
 
-                {/* Mobile CSS */}
-                {activeTab === 'mobile' && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-medium">
-                        Mobile CSS ({formatTime((result.mobile?.extractionTime || 0))})
-                      </h3>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(result.mobile!.css)}
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => downloadCSS(result.mobile!.css, 'critical-mobile.css')}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          Download
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="relative">
-                      <pre className="bg-muted p-4 rounded-md text-sm overflow-auto max-h-96 whitespace-pre-wrap">
-                        <code>{result.mobile.css}</code>
-                      </pre>
-                    </div>
-                  </div>
-                )}
+                <TabsContent value="mobile">
+                  {result.mobile &&
+                    renderCodeBlock(
+                      result.mobile.css,
+                      result.mobile.size,
+                      result.mobile.extractionTime,
+                      'mobile'
+                    )}
+                </TabsContent>
 
-                {/* Desktop CSS */}
-                {activeTab === 'desktop' && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-medium">
-                        Desktop CSS ({formatTime((result.desktop?.extractionTime || 0))})
-                      </h3>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(result.desktop!.css)}
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => downloadCSS(result.desktop!.css, 'critical-desktop.css')}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          Download
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="relative">
-                      <pre className="bg-muted p-4 rounded-md text-sm overflow-auto max-h-96 whitespace-pre-wrap">
-                        <code>{result.desktop.css}</code>
-                      </pre>
-                    </div>
-                  </div>
-                )}
-              </div>
+                <TabsContent value="desktop">
+                  {result.desktop &&
+                    renderCodeBlock(
+                      result.desktop.css,
+                      result.desktop.size,
+                      result.desktop.extractionTime,
+                      'desktop'
+                    )}
+                </TabsContent>
+              </Tabs>
             ) : (
-              /* Single viewport result */
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium">
-                    Critical CSS ({result.extractionTime ? formatTime(result.extractionTime) : 'N/A'})
-                  </h3>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(result.css!)}
-                    >
-                      <Copy className="mr-2 h-4 w-4" />
-                      Copy
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => downloadCSS(result.css!, 'critical.css')}
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      Download
-                    </Button>
-                  </div>
-                </div>
-                <div className="relative">
-                  <pre className="bg-muted p-4 rounded-md text-sm overflow-auto max-h-96 whitespace-pre-wrap">
-                    <code>{result.css}</code>
-                  </pre>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Size: {formatBytes(result.size || 0)} | 
-                  Extraction time: {result.extractionTime ? formatTime(result.extractionTime) : 'N/A'}
-                </div>
-              </div>
+              result.css &&
+              renderCodeBlock(
+                result.css,
+                result.size ?? 0,
+                result.extractionTime ?? 0,
+                'single'
+              )
             )}
           </CardContent>
         </Card>
