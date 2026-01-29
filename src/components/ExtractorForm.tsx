@@ -274,7 +274,7 @@ export default function ExtractorForm({ initialUrl = '' }: ExtractorFormProps) {
                   value={formState.url}
                   onChange={(e) => handleInputChange('url', e.target.value)}
                   disabled={loading}
-                  className="h-11 pl-4 pr-4 bg-background/50 border-border/50 focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="h-11 pl-4 pr-4 border-border/50 focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
             </div>
