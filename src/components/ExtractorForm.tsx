@@ -114,27 +114,6 @@ export default function ExtractorForm({ initialUrl = '' }: ExtractorFormProps) {
     URL.revokeObjectURL(url);
   }, []);
 
-  const simulateProgress = useCallback(async () => {
-    const stages = [
-      { progress: 10, text: 'Initializing browser...' },
-      { progress: 25, text: 'Navigating to URL...' },
-      { progress: 40, text: 'Analyzing page structure...' },
-      { progress: 55, text: 'Extracting mobile styles...' },
-      { progress: 70, text: 'Extracting desktop styles...' },
-      { progress: 85, text: 'Processing and deduplicating...' },
-      { progress: 95, text: 'Finalizing output...' },
-      { progress: 100, text: 'Complete!' },
-    ];
-
-    for (const stage of stages) {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      setProgress(stage.progress);
-      setProgressText(stage.text);
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -154,11 +133,9 @@ export default function ExtractorForm({ initialUrl = '' }: ExtractorFormProps) {
     setError(null);
     setResult(null);
     setProgress(0);
-    setProgressText('');
+    setProgressText('Extracting...');
 
     try {
-      await simulateProgress();
-
       const response = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,6 +148,8 @@ export default function ExtractorForm({ initialUrl = '' }: ExtractorFormProps) {
         throw new Error(data.message || 'Extraction failed');
       }
 
+      setProgress(100);
+      setProgressText('Complete!');
       setResult(data);
     } catch (err) {
       setError(
@@ -178,8 +157,10 @@ export default function ExtractorForm({ initialUrl = '' }: ExtractorFormProps) {
       );
     } finally {
       setLoading(false);
-      setProgress(0);
-      setProgressText('');
+      if (!result) {
+        setProgress(0);
+        setProgressText('');
+      }
     }
   };
 
@@ -341,9 +322,8 @@ export default function ExtractorForm({ initialUrl = '' }: ExtractorFormProps) {
               <div className="space-y-3 animate-scale-in">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">{progressText}</span>
-                  <span className="font-mono text-primary">{progress}%</span>
                 </div>
-                <Progress value={progress} className="h-2" />
+                <Progress value={50} className="h-2 animate-pulse" />
               </div>
             )}
 

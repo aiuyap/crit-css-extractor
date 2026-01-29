@@ -1,14 +1,15 @@
-import {
-  chromium,
-  type Browser,
-  type BrowserContext,
-  type Page,
-} from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright-core';
+import { chromium as playwright } from 'playwright-core';
+import chromium from '@sparticuz/chromium';
 import type { ViewportConfig, CriticalCSSOptions } from './types';
 import { PERFORMANCE_CONFIG, VIEWPORTS, USER_AGENTS } from './constants';
 import { LCPObserver } from './lcp-observer';
 import { DOMUtils } from './dom-utils';
 import { TimeoutError, RenderingError, NetworkError } from './errors';
+
+const isServerless =
+  process.env.VERCEL === '1' ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined;
 
 export interface RenderingContext {
   browser: Browser;
@@ -28,23 +29,31 @@ export class PlaywrightRenderer {
   async initializeBrowser(): Promise<void> {
     if (this.browser) return;
 
-    this.browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection',
-      ],
-    });
+    if (isServerless) {
+      this.browser = await playwright.launch({
+        args: chromium.args,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless === true,
+      });
+    } else {
+      this.browser = await playwright.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+        ],
+      });
+    }
   }
 
   /**
