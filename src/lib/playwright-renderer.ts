@@ -30,9 +30,25 @@ export class PlaywrightRenderer {
     if (this.browser) return;
 
     if (isServerless) {
+      process.env.HOME = process.env.HOME || '/tmp';
+      process.env.FONTCONFIG_PATH = '/tmp/fonts';
+      if (!process.env.LD_LIBRARY_PATH?.includes('/tmp')) {
+        process.env.LD_LIBRARY_PATH = process.env.LD_LIBRARY_PATH
+          ? `/tmp:${process.env.LD_LIBRARY_PATH}`
+          : '/tmp';
+      }
+
+      console.log('Serverless environment detected');
+      console.log('HOME:', process.env.HOME);
+      console.log('LD_LIBRARY_PATH:', process.env.LD_LIBRARY_PATH);
+      console.log('FONTCONFIG_PATH:', process.env.FONTCONFIG_PATH);
+
+      const executablePath = await chromium.executablePath();
+      console.log('Chromium executable path:', executablePath);
+
       this.browser = await playwright.launch({
         args: chromium.args,
-        executablePath: await chromium.executablePath(),
+        executablePath,
         headless: chromium.headless === true,
       });
     } else {
