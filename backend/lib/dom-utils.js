@@ -1,12 +1,7 @@
-import type { Page } from 'playwright';
-import type { ViewportConfig, ElementInfo } from './types';
-import { PERFORMANCE_CONFIG } from './constants';
+const { PERFORMANCE_CONFIG } = require('./constants');
 
-export class DOMUtils {
-  private page: Page;
-  private viewport: ViewportConfig;
-
-  constructor(page: Page, viewport: ViewportConfig) {
+class DOMUtils {
+  constructor(page, viewport) {
     this.page = page;
     this.viewport = viewport;
   }
@@ -15,14 +10,14 @@ export class DOMUtils {
    * Get all elements that are above the fold (visible in viewport with buffer)
    * Returns serializable element info with selectors generated in browser context
    */
-  async getAboveFoldElements(): Promise<ElementInfo[]> {
+  async getAboveFoldElements() {
     return await this.page.evaluate(
-      ({ viewport, buffer }: { viewport: any; buffer: any }) => {
-        const elements: any[] = [];
+      ({ viewport, buffer }) => {
+        const elements = [];
         const viewportHeight = viewport.height;
         const bufferZone = buffer;
 
-        function isAboveFold(element: Element): boolean {
+        function isAboveFold(element) {
           const rect = element.getBoundingClientRect();
 
           // Element is above fold if it intersects with viewport + buffer
@@ -35,7 +30,7 @@ export class DOMUtils {
           return isVisible && !isHidden;
         }
 
-        function generateSelector(element: Element): string {
+        function generateSelector(element) {
           // Try ID first (most specific)
           if (element.id) {
             return `#${element.id}`;
@@ -45,7 +40,7 @@ export class DOMUtils {
           if (element.className && typeof element.className === 'string') {
             const classes = element.className
               .split(' ')
-              .filter((cls: string) => cls.trim() && !cls.includes(':'));
+              .filter((cls) => cls.trim() && !cls.includes(':'));
             if (classes.length > 0) {
               return `${element.tagName.toLowerCase()}.${classes.join('.')}`;
             }
@@ -55,7 +50,7 @@ export class DOMUtils {
           return element.tagName.toLowerCase();
         }
 
-        function getElementInfo(element: Element): any {
+        function getElementInfo(element) {
           return {
             tagName: element.tagName.toLowerCase(),
             className:
@@ -100,11 +95,11 @@ export class DOMUtils {
   /**
    * Get elements that have visible text content above the fold
    */
-  async getVisibleTextElements(): Promise<ElementInfo[]> {
+  async getVisibleTextElements() {
     const aboveFoldElements = await this.getAboveFoldElements();
 
-    return await this.page.evaluate((elements: any) => {
-      return elements.filter((elementInfo: any) => {
+    return await this.page.evaluate((elements) => {
+      return elements.filter((elementInfo) => {
         const element = elementInfo.element;
         const textContent = element.textContent?.trim();
 
@@ -128,46 +123,40 @@ export class DOMUtils {
 
         return true;
       });
-    }, aboveFoldElements as any);
+    }, aboveFoldElements);
   }
 
   /**
    * Get font families used by visible text elements
    */
-  async getUsedFontFamilies(): Promise<string[]> {
+  async getUsedFontFamilies() {
     const textElements = await this.getVisibleTextElements();
 
-    return await this.page.evaluate((elements: any) => {
-      const fontFamilies = new Set<string>();
+    return await this.page.evaluate((elements) => {
+      const fontFamilies = new Set();
 
-      elements.forEach((elementInfo: any) => {
+      elements.forEach((elementInfo) => {
         const computedStyle = elementInfo.computedStyle;
         const fontFamily = computedStyle.getPropertyValue('font-family');
 
         if (fontFamily) {
           // Split and clean up font family names
-          const fonts = fontFamily.split(',').map((font: any) => {
+          const fonts = fontFamily.split(',').map((font) => {
             return font.trim().replace(/['"]/g, '');
           });
 
-          fonts.forEach((font: any) => fontFamilies.add(font));
+          fonts.forEach((font) => fontFamilies.add(font));
         }
       });
 
       return Array.from(fontFamilies);
-    }, textElements as any);
+    }, textElements);
   }
 
   /**
    * Get scroll position and viewport dimensions
    */
-  async getViewportInfo(): Promise<{
-    width: number;
-    height: number;
-    scrollX: number;
-    scrollY: number;
-    documentHeight: number;
-  }> {
+  async getViewportInfo() {
     return await this.page.evaluate(() => {
       return {
         width: window.innerWidth,
@@ -182,7 +171,7 @@ export class DOMUtils {
   /**
    * Check if an element would cause layout shift if styled
    */
-  async wouldCauseLayoutShift(selector: string): Promise<boolean> {
+  async wouldCauseLayoutShift(selector) {
     return await this.page.evaluate((sel) => {
       try {
         const element = document.querySelector(sel);
@@ -208,16 +197,14 @@ export class DOMUtils {
   /**
    * Generate a unique selector for an element
    */
-  async generateSelector(element: any): Promise<string> {
+  async generateSelector(element) {
     return await this.page.evaluate((el) => {
       if (el.id) {
         return `#${el.id}`;
       }
 
       if (el.className) {
-        const classes = el.className
-          .split(' ')
-          .filter((cls: string) => cls.trim());
+        const classes = el.className.split(' ').filter((cls) => cls.trim());
         if (classes.length > 0) {
           return `${el.tagName.toLowerCase()}.${classes.join('.')}`;
         }
@@ -239,7 +226,7 @@ export class DOMUtils {
         if (current.className) {
           const classes = current.className
             .split(' ')
-            .filter((cls: string) => cls.trim());
+            .filter((cls) => cls.trim());
           if (classes.length > 0) {
             selector += `.${classes[0]}`;
           }
@@ -258,10 +245,10 @@ export class DOMUtils {
    * Returns true if content settled within timeout, false otherwise.
    * Does not throw on timeout – callers can decide whether to warn or proceed.
    */
-  async waitForContentSettle(timeoutMs: number = 2000): Promise<boolean> {
+  async waitForContentSettle(timeoutMs = 2000) {
     try {
-      const settled = await this.page.evaluate((timeout: number) => {
-        return new Promise<boolean>((resolve) => {
+      const settled = await this.page.evaluate((timeout) => {
+        return new Promise((resolve) => {
           // If document.body doesn't exist, resolve immediately
           if (!document.body) {
             resolve(true);
@@ -270,7 +257,7 @@ export class DOMUtils {
 
           let lastMutationTime = Date.now();
           const quiescentMs = 250; // Period of no mutations to consider settled
-          let checkInterval: ReturnType<typeof setInterval> | null = null;
+          let checkInterval = null;
 
           const observer = new MutationObserver(() => {
             lastMutationTime = Date.now();
@@ -283,7 +270,7 @@ export class DOMUtils {
             characterData: false,
           });
 
-          const cleanup = (result: boolean) => {
+          const cleanup = (result) => {
             observer.disconnect();
             if (checkInterval) clearInterval(checkInterval);
             resolve(result);
@@ -311,3 +298,5 @@ export class DOMUtils {
     }
   }
 }
+
+module.exports = { DOMUtils };

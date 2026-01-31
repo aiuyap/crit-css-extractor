@@ -23,196 +23,134 @@ This tool replicates Lighthouse rendering behavior to ensure accurate, real-worl
 - **LCP Stabilization**: Waits 500ms after final LCP entry for accurate detection
 - **Performance Simulation**: Simulates real-world conditions (CPU throttling ~4×, Slow 4G network)
 
-## Tech Stack
+## Architecture
 
-- **Frontend**: Next.js 14+ (App Router)
-- **Backend**: Node.js with Playwright (Chromium)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **CSS Parsing**: PostCSS / CSSTree
+This application is now split into two separate services:
+
+1. **Frontend (Vercel)**: Next.js UI that calls backend API
+2. **Backend (Railway)**: Node.js + Playwright API for browser automation
 
 ## Quick Start
 
-### Installation
+### Running Locally
 
-```bash
-npm install
-```
+1. Clone both repositories:
 
-### Development
+   ```bash
+   git clone https://github.com/aiuyap/crit-css-extractor.git
+   git clone https://github.com/aiuyap/crit-css-extractor-backend.git
+   ```
 
-```bash
-npm run dev
-```
+2. Start backend server:
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+   ```bash
+   cd crit-css-extractor-backend
+   npm install
+   npx playwright install chromium
+   npm run dev
+   ```
 
-### Production Build
+3. In a new terminal, start frontend:
 
-```bash
-npm run build
-npm run start
-```
+   ```bash
+   cd crit-css-extractor
+   npm install
+   npm run dev
+   ```
 
-## Usage
+4. Visit http://localhost:3000
 
-### Web Interface
+### Deployment
 
-1. Enter the URL of the page you want to analyze
-2. Select viewport (Mobile or Desktop)
-3. Click "Extract Critical CSS"
-4. Copy the generated CSS and inline it in your HTML `<head>`
+#### Frontend (Vercel)
 
-### API Usage
+1. Push frontend code to GitHub
+2. Connect GitHub repo to Vercel
+3. Set environment variable in Vercel dashboard:
+   - `NEXT_PUBLIC_BACKEND_URL` = your Railway backend URL
 
-```typescript
-import { extractCriticalCSS } from '@/lib/extractor';
+#### Backend (Railway)
 
-const criticalCSS = await extractCriticalCSS({
-  url: 'https://example.com',
-  viewport: {
-    width: 360,
-    height: 640,
-    deviceScaleFactor: 2.625,
-    isMobile: true,
-  },
-  timeout: 20000,
-});
+1. Push backend code to GitHub
+2. Connect GitHub repo to Railway
+3. Railway will auto-deploy on push
 
-console.log(criticalCSS);
-```
+## API Integration
 
-### Viewport Configurations
+The frontend calls the backend API:
 
-```typescript
-const VIEWPORTS = {
-  mobile: {
-    width: 360,
-    height: 640,
-    deviceScaleFactor: 2.625,
-    isMobile: true,
-  },
-  desktop: {
-    width: 1366,
-    height: 768,
-    deviceScaleFactor: 1,
-    isMobile: false,
-  },
-};
-```
+**POST** `/api/extract` - Extract critical CSS from a URL
 
-## API Reference
+Request:
 
-### `extractCriticalCSS(options)`
-
-Extracts critical CSS for the given URL and viewport.
-
-**Parameters:**
-
-| Parameter  | Type             | Required | Description                              |
-| ---------- | ---------------- | -------- | ---------------------------------------- |
-| `url`      | `string`         | Yes      | The URL of the page to analyze           |
-| `viewport` | `ViewportConfig` | Yes      | Viewport configuration                   |
-| `timeout`  | `number`         | No       | Timeout in milliseconds (default: 20000) |
-
-**Returns:** `Promise<string>` - Minified critical CSS
-
-### `ViewportConfig`
-
-```typescript
-interface ViewportConfig {
-  width: number;
-  height: number;
-  deviceScaleFactor: number;
-  isMobile: boolean;
+```json
+{
+  "url": "https://example.com",
+  "viewport": "both",
+  "includeShadows": false
 }
 ```
 
-## Configuration
+Response:
 
-### Environment Variables
+```json
+{
+  "success": true,
+  "url": "https://example.com",
+  "viewport": "both",
+  "mobile": {
+    "css": "/* critical CSS */",
+    "size": 1234,
+    "extractionTime": 5000
+  },
+  "desktop": {
+    "css": "/* critical CSS */",
+    "size": 2345,
+    "extractionTime": 6000
+  },
+  "combined": {
+    "css": "/* combined CSS */",
+    "size": 3456
+  },
+  "processingTime": 7000
+}
+```
 
-| Variable                     | Default          | Description                      |
-| ---------------------------- | ---------------- | -------------------------------- |
-| `TIMEOUT_MS`                 | 20000            | Maximum extraction time per page |
-| `MAX_CONCURRENT_EXTRACTIONS` | 3                | Limit concurrent page processing |
-| `ENABLE_PERFORMANCE_LOGGING` | development only | Log timing metrics               |
+## Tech Stack
 
-### Performance Targets
+### Frontend
 
-- **Extraction Timeout**: 20 seconds maximum
-- **Output Size**: < 14KB gzipped
-- **Memory Usage**: No leaks during batch processing
-- **Deterministic Output**: Same URL + viewport produces identical results
+- **Framework**: Next.js 14+ (App Router)
+- **Styling**: Tailwind CSS
+- **Components**: shadcn/ui
+- **Icons**: Lucide React
+- **Deployment**: Vercel
 
-## Development
+### Backend
 
-### Available Commands
+- **Framework**: Express.js
+- **Browser Automation**: Playwright (Chromium)
+- **CSS Parsing**: css-tree
+- **Deployment**: Railway
+
+## Development Commands
+
+### Frontend
 
 ```bash
-npm run dev           # Start development server
-npm run build         # Build for production
-npm run start         # Start production server
-npm run lint          # Run ESLint
-npm run type-check    # Run TypeScript checks
-npm run test          # Run all tests
-npm run test:unit     # Run unit tests only
-npm run test:integration  # Run integration tests only
-npm run test:watch    # Run tests in watch mode
-npm run analyze       # Bundle analysis
-npm run lighthouse    # Run Lighthouse audit
-npm run validate      # Run lint + type-check + test
+npm run dev        # Start development server
+npm run build      # Build for production
+npm run start      # Start production server
+npm run lint       # Run ESLint
+npm run type-check # Run TypeScript checks
 ```
 
-### File Structure
-
-```
-src/
-├── app/                    # Next.js App Router
-│   ├── api/               # API routes
-│   ├── globals.css        # Global styles
-│   └── layout.tsx         # Root layout
-├── lib/
-│   ├── extractor.ts       # Main extraction logic
-│   ├── lcp-observer.ts    # LCP tracking
-│   ├── css-parser.ts      # CSS parsing/filtering
-│   ├── viewport.ts        # Viewport management
-│   └── types.ts           # TypeScript definitions
-├── components/
-│   ├── ui/               # Base UI components
-│   ├── ExtractorForm.tsx # Main form component
-│   └── ResultsView.tsx   # Results display
-└── test/
-    ├── mocks/           # Test utilities
-    └── fixtures/        # Sample HTML/CSS
-```
-
-### Running Tests
+### Backend
 
 ```bash
-# Run all tests
-npm run test
-
-# Run unit tests
-npm run test:unit
-
-# Run integration tests
-npm run test:integration
-
-# Run specific test file
-npm run test:unit path/to/test.test.ts
-
-# Run tests matching pattern
-npm run test:unit -- --testNamePattern="specific test name"
+npm run dev        # Start development server
+npm run start      # Start production server
 ```
-
-## Best Practices
-
-1. **Inline Critical CSS**: Place the extracted CSS directly in `<head>` using `<style>`
-2. **Defer Non-Critical CSS**: Load remaining styles asynchronously with `media="print" onload="this.media='all'"`
-3. **Test Both Viewports**: Extract critical CSS for both mobile and desktop
-4. **Monitor LCP**: The tool waits for LCP stabilization but verify results match your content
-5. **Regular Testing**: Re-extract when making significant design changes
 
 ## Security
 
@@ -220,23 +158,6 @@ npm run test:unit -- --testNamePattern="specific test name"
 - Resource limits prevent DoS attacks
 - Generated CSS is sanitized
 - No dynamic code execution (`eval()`) is used
-
-## Contributing
-
-See [AGENTS.md](./AGENTS.md) for development guidelines, code conventions, and contributing standards.
-
-## Instructions for running Locally
-
-# 1. Clone the repository
-git clone https://github.com/aiuyap/crit-css-extractor.git
-cd crit-css-extractor
-# 2. Install dependencies
-npm install
-# 3. Install Chromium browser (one-time setup)
-npx playwright install chromium
-# 4. Run the app
-npm run dev
-
 
 ## License
 

@@ -1,81 +1,44 @@
-import type { Browser, BrowserContext, Page } from 'playwright-core';
-import { chromium as playwright } from 'playwright-core';
-import chromium from '@sparticuz/chromium';
-import type { ViewportConfig, CriticalCSSOptions } from './types';
-import { PERFORMANCE_CONFIG, VIEWPORTS, USER_AGENTS } from './constants';
-import { LCPObserver } from './lcp-observer';
-import { DOMUtils } from './dom-utils';
-import { TimeoutError, RenderingError, NetworkError } from './errors';
+const { chromium: playwright } = require('playwright-core');
+const { PERFORMANCE_CONFIG, USER_AGENTS } = require('./constants');
+const { LCPObserver } = require('./lcp-observer');
+const { DOMUtils } = require('./dom-utils');
+const { TimeoutError, RenderingError, NetworkError } = require('./errors');
 
-const isServerless =
-  process.env.VERCEL === '1' ||
-  process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined;
-
-export interface RenderingContext {
-  browser: Browser;
-  context: BrowserContext;
-  page: Page;
-  lcpObserver: LCPObserver;
-  domUtils: DOMUtils;
-}
-
-export class PlaywrightRenderer {
-  private browser: Browser | null = null;
-  private contexts: Map<string, BrowserContext> = new Map();
+class PlaywrightRenderer {
+  constructor() {
+    this.browser = null;
+    this.contexts = new Map();
+  }
 
   /**
    * Initialize browser with performance throttling
    */
-  async initializeBrowser(): Promise<void> {
+  async initializeBrowser() {
     if (this.browser) return;
 
-    if (isServerless) {
-      process.env.HOME = process.env.HOME || '/tmp';
-      process.env.FONTCONFIG_PATH = '/tmp/fonts';
-      if (!process.env.LD_LIBRARY_PATH?.includes('/tmp')) {
-        process.env.LD_LIBRARY_PATH = process.env.LD_LIBRARY_PATH
-          ? `/tmp:${process.env.LD_LIBRARY_PATH}`
-          : '/tmp';
-      }
-
-      console.log('Serverless environment detected');
-      console.log('HOME:', process.env.HOME);
-      console.log('LD_LIBRARY_PATH:', process.env.LD_LIBRARY_PATH);
-      console.log('FONTCONFIG_PATH:', process.env.FONTCONFIG_PATH);
-
-      const executablePath = await chromium.executablePath();
-      console.log('Chromium executable path:', executablePath);
-
-      this.browser = await playwright.launch({
-        args: chromium.args,
-        executablePath,
-        headless: chromium.headless === true,
-      });
-    } else {
-      this.browser = await playwright.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-        ],
-      });
-    }
+    this.browser = await playwright.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+      ],
+    });
   }
 
   /**
    * Create rendering context for a specific extraction
    */
-  async createContext(options: CriticalCSSOptions): Promise<RenderingContext> {
+  async createContext(options) {
     await this.initializeBrowser();
     if (!this.browser) {
       throw new RenderingError('Failed to initialize browser');
@@ -155,11 +118,7 @@ export class PlaywrightRenderer {
   /**
    * Navigate to URL and wait for LCP stabilization
    */
-  async loadPage(
-    renderingContext: RenderingContext,
-    url: string,
-    options: CriticalCSSOptions
-  ): Promise<void> {
+  async loadPage(renderingContext, url, options) {
     const { page, lcpObserver } = renderingContext;
 
     try {
@@ -202,7 +161,7 @@ export class PlaywrightRenderer {
           error
         );
       } else {
-        throw new RenderingError(`Failed to load page ${url}`, error as Error);
+        throw new RenderingError(`Failed to load page ${url}`, error);
       }
     }
   }
@@ -210,7 +169,7 @@ export class PlaywrightRenderer {
   /**
    * Extract page HTML and CSS information
    */
-  async extractPageData(renderingContext: RenderingContext): Promise<PageData> {
+  async extractPageData(renderingContext) {
     const { page } = renderingContext;
 
     return await page.evaluate(() => {
@@ -218,13 +177,13 @@ export class PlaywrightRenderer {
       const html = document.documentElement.outerHTML;
 
       // Get inline styles
-      const inlineStyles: string[] = [];
+      const inlineStyles = [];
       document.querySelectorAll('style').forEach((style) => {
         inlineStyles.push(style.textContent || '');
       });
 
       // Get external stylesheets
-      const externalStylesheets: string[] = [];
+      const externalStylesheets = [];
       document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
         const href = link.getAttribute('href');
         if (href) {
@@ -233,7 +192,7 @@ export class PlaywrightRenderer {
       });
 
       // Get font faces
-      const fontFaces: string[] = [];
+      const fontFaces = [];
       document.querySelectorAll('style').forEach((style) => {
         const cssText = style.textContent || '';
         const fontFaceRegex = /@font-face\s*{[^}]*}/g;
@@ -255,7 +214,7 @@ export class PlaywrightRenderer {
   /**
    * Get all CSS content (inline and external)
    */
-  async getAllCSS(renderingContext: RenderingContext): Promise<string> {
+  async getAllCSS(renderingContext) {
     const { page } = renderingContext;
 
     return await page.evaluate(() => {
@@ -276,14 +235,14 @@ export class PlaywrightRenderer {
       // Get external stylesheets
       const styleSheets = Array.from(document.styleSheets);
 
-      const tryGetSheetText = (sheet: StyleSheet): string => {
+      const tryGetSheetText = (sheet) => {
         try {
           let cssText = '';
-          const cssSheet = sheet as any;
+          const cssSheet = sheet;
 
           if (cssSheet.cssRules) {
             for (const rule of Array.from(cssSheet.cssRules)) {
-              cssText += (rule as any).cssText + '\n';
+              cssText += rule.cssText + '\n';
             }
           }
 
@@ -295,7 +254,7 @@ export class PlaywrightRenderer {
       };
 
       styleSheets.forEach((sheet) => {
-        const sheetText = tryGetSheetText(sheet as CSSStyleSheet);
+        const sheetText = tryGetSheetText(sheet);
         if (sheetText.trim()) {
           allCSS += sheetText;
           externalCount++;
@@ -309,7 +268,7 @@ export class PlaywrightRenderer {
   /**
    * Clean up rendering context
    */
-  async cleanup(contextId: string): Promise<void> {
+  async cleanup(contextId) {
     const context = this.contexts.get(contextId);
     if (context) {
       await context.close();
@@ -320,7 +279,7 @@ export class PlaywrightRenderer {
   /**
    * Clean up all resources
    */
-  async close(): Promise<void> {
+  async close() {
     // Close all contexts
     for (const [contextId, context] of Array.from(this.contexts.entries())) {
       await context.close();
@@ -337,7 +296,7 @@ export class PlaywrightRenderer {
   /**
    * Get browser metrics for debugging
    */
-  async getMetrics(renderingContext: RenderingContext): Promise<any> {
+  async getMetrics(renderingContext) {
     const { page, lcpObserver } = renderingContext;
 
     const lcpMetrics = await lcpObserver.getPerformanceMetrics();
@@ -350,9 +309,4 @@ export class PlaywrightRenderer {
   }
 }
 
-interface PageData {
-  html: string;
-  inlineStyles: string[];
-  externalStylesheets: string[];
-  fontFaces: string[];
-}
+module.exports = { PlaywrightRenderer };

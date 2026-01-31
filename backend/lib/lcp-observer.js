@@ -1,25 +1,8 @@
-import type { Page } from 'playwright';
-import { PERFORMANCE_CONFIG } from './constants';
-import { TimeoutError } from './errors';
+const { PERFORMANCE_CONFIG } = require('./constants');
+const { TimeoutError } = require('./errors');
 
-export interface LCPObserverOptions {
-  stabilizationDelay?: number;
-  timeout?: number;
-}
-
-export interface LCPEntry {
-  element: string;
-  renderTime: number;
-  loadTime: number;
-  size: number;
-  url?: string;
-}
-
-export class LCPObserver {
-  private page: Page;
-  private options: Required<LCPObserverOptions>;
-
-  constructor(page: Page, options: LCPObserverOptions = {}) {
+class LCPObserver {
+  constructor(page, options = {}) {
     this.page = page;
     this.options = {
       stabilizationDelay:
@@ -32,7 +15,7 @@ export class LCPObserver {
   /**
    * Wait for LCP to stabilize before proceeding with extraction
    */
-  async waitForLCPStabilization(): Promise<LCPEntry[]> {
+  async waitForLCPStabilization() {
     return new Promise(async (resolve, reject) => {
       const timeoutId = setTimeout(() => {
         // Instead of rejecting, resolve with any LCP entries we have
@@ -49,27 +32,27 @@ export class LCPObserver {
       try {
         // Inject LCP observer script
         const stabilizationDelay = this.options.stabilizationDelay;
-        await this.page.evaluate((delay: number) => {
+        await this.page.evaluate((delay) => {
           // Clear any existing observer
-          if ((window as any).__lcpObserver) {
-            (window as any).__lcpObserver.disconnect();
+          if (window.__lcpObserver) {
+            window.__lcpObserver.disconnect();
           }
 
           // Reset state
-          (window as any).__lcpStabilized = false;
-          (window as any).__lcpEntries = [];
+          window.__lcpStabilized = false;
+          window.__lcpEntries = [];
 
-          const lcpEntries: any[] = [];
-          let stabilizationTimer: ReturnType<typeof setTimeout> | null = null;
+          const lcpEntries = [];
+          let stabilizationTimer = null;
 
-          (window as any).__lcpObserver = new PerformanceObserver((list) => {
+          window.__lcpObserver = new PerformanceObserver((list) => {
             // If already stabilized, ignore further entries
-            if ((window as any).__lcpStabilized) return;
+            if (window.__lcpStabilized) return;
 
             const entries = list.getEntries();
             for (const entry of entries) {
               if (entry.entryType === 'largest-contentful-paint') {
-                const lcpEntry = entry as any;
+                const lcpEntry = entry;
                 lcpEntries.push({
                   element: lcpEntry.element?.tagName.toLowerCase() || 'unknown',
                   renderTime: lcpEntry.renderTime || lcpEntry.loadTime,
@@ -86,33 +69,33 @@ export class LCPObserver {
                 // Set new stabilization timer using the passed-in delay
                 stabilizationTimer = setTimeout(() => {
                   // LCP has stabilized
-                  (window as any).__lcpStabilized = true;
-                  (window as any).__lcpEntries = lcpEntries;
+                  window.__lcpStabilized = true;
+                  window.__lcpEntries = lcpEntries;
                 }, delay || 500);
               }
             }
           });
 
-          (window as any).__lcpObserver.observe({
+          window.__lcpObserver.observe({
             entryTypes: ['largest-contentful-paint'],
           });
 
           // Set a fallback timeout for initial LCP
           setTimeout(() => {
-            if (!(window as any).__lcpStabilized && lcpEntries.length === 0) {
+            if (!window.__lcpStabilized && lcpEntries.length === 0) {
               // If no LCP entries after 3 seconds, proceed anyway
-              (window as any).__lcpStabilized = true;
-              (window as any).__lcpEntries = lcpEntries;
+              window.__lcpStabilized = true;
+              window.__lcpEntries = lcpEntries;
             }
           }, 3000);
         }, stabilizationDelay);
 
         // Poll for stabilization
-        const checkStabilization = async (): Promise<LCPEntry[]> => {
+        const checkStabilization = async () => {
           const result = await this.page.evaluate(() => {
             return {
-              stabilized: (window as any).__lcpStabilized || false,
-              entries: (window as any).__lcpEntries || [],
+              stabilized: window.__lcpStabilized || false,
+              entries: window.__lcpEntries || [],
             };
           });
 
@@ -145,22 +128,22 @@ export class LCPObserver {
   /**
    * Get current LCP metrics without waiting for stabilization
    */
-  async getCurrentLCP(): Promise<LCPEntry[]> {
+  async getCurrentLCP() {
     return await this.page.evaluate(() => {
-      return (window as any).__lcpEntries || [];
+      return window.__lcpEntries || [];
     });
   }
 
   /**
    * Clean up the observer
    */
-  async cleanup(): Promise<void> {
+  async cleanup() {
     await this.page.evaluate(() => {
-      if ((window as any).__lcpObserver) {
-        (window as any).__lcpObserver.disconnect();
-        delete (window as any).__lcpObserver;
-        delete (window as any).__lcpStabilized;
-        delete (window as any).__lcpEntries;
+      if (window.__lcpObserver) {
+        window.__lcpObserver.disconnect();
+        delete window.__lcpObserver;
+        delete window.__lcpStabilized;
+        delete window.__lcpEntries;
       }
     });
   }
@@ -168,11 +151,9 @@ export class LCPObserver {
   /**
    * Get performance metrics for debugging
    */
-  async getPerformanceMetrics(): Promise<any> {
+  async getPerformanceMetrics() {
     return await this.page.evaluate(() => {
-      const navigation = performance.getEntriesByType(
-        'navigation'
-      )[0] as PerformanceNavigationTiming;
+      const navigation = performance.getEntriesByType('navigation')[0];
       const paint = performance.getEntriesByType('paint');
 
       return {
@@ -185,8 +166,10 @@ export class LCPObserver {
         firstContentfulPaint: paint.find(
           (entry) => entry.name === 'first-contentful-paint'
         )?.startTime,
-        lcpEntries: (window as any).__lcpEntries || [],
+        lcpEntries: window.__lcpEntries || [],
       };
     });
   }
 }
+
+module.exports = { LCPObserver };

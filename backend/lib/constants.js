@@ -1,6 +1,7 @@
-import type { ViewportConfig } from './types';
-
-export const VIEWPORTS: Record<'mobile' | 'desktop', ViewportConfig> = {
+/**
+ * Viewport configurations for mobile and desktop extraction
+ */
+const VIEWPORTS = {
   mobile: {
     width: 360,
     height: 640,
@@ -15,9 +16,12 @@ export const VIEWPORTS: Record<'mobile' | 'desktop', ViewportConfig> = {
     isMobile: false,
     hasTouch: false,
   },
-} as const;
+};
 
-export const PERFORMANCE_CONFIG = {
+/**
+ * Performance configuration for extraction
+ */
+const PERFORMANCE_CONFIG = {
   CPU_THROTTLE_RATE: 1, // No slowdown for testing
   NETWORK_THROTTLE: {
     offline: false,
@@ -29,16 +33,22 @@ export const PERFORMANCE_CONFIG = {
   ABOVE_FOLD_BUFFER: 100, // 100px buffer below viewport
   DEFAULT_TIMEOUT: 30000, // 30 seconds maximum execution time
   MAX_CONCURRENT_EXTRACTIONS: 3,
-} as const;
+};
 
-export const USER_AGENTS = {
+/**
+ * User agents for different viewports
+ */
+const USER_AGENTS = {
   mobile:
     'Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
   desktop:
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-} as const;
+};
 
-export const CSS_CONSTANTS = {
+/**
+ * CSS property filtering constants
+ */
+const CSS_CONSTANTS = {
   ALLOWED_PROPERTIES: [
     // Layout
     'display',
@@ -137,4 +147,11 @@ export const CSS_CONSTANTS = {
   ],
 
   EXCLUDED_MEDIA_QUERIES: ['print', 'speech', 'prefers-reduced-motion'],
-} as const;
+};
+
+module.exports = {
+  VIEWPORTS,
+  PERFORMANCE_CONFIG,
+  USER_AGENTS,
+  CSS_CONSTANTS,
+};

@@ -1,43 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { CriticalCSSExtractor } from '@/lib/extractor';
-import { VIEWPORTS } from '@/lib/constants';
-import { ValidationError, CriticalExtractionError } from '@/lib/errors';
-import type { CriticalCSSOptions } from '@/lib/types';
+const express = require('express');
+const { CriticalCSSExtractor } = require('../lib/extractor');
+const { VIEWPORTS } = require('../lib/constants');
+const { ValidationError, CriticalExtractionError } = require('../lib/errors');
 
-// Rate limiting configuration
-const RATE_LIMIT = {
-  maxRequests: 10,
-  windowMs: 60 * 1000, // 1 minute
-};
+const router = express.Router();
 
-// Simple in-memory rate limiter (production should use Redis)
-const requestCounts = new Map<string, { count: number; resetTime: number }>();
-
-export async function POST(request: NextRequest) {
+/**
+ * POST /api/extract
+ * Extract critical CSS from a URL
+ *
+ * Request body:
+ * {
+ *   url: string (required),
+ *   viewport: 'mobile' | 'desktop' | 'both' (default: 'both'),
+ *   includeShadows: boolean (default: false),
+ *   userAgent: string (optional)
+ * }
+ */
+router.post('/extract', async (req, res) => {
   const startTime = Date.now();
 
   try {
-    // Get client IP for rate limiting
-    const clientIP = request.ip || 'unknown';
-    
-    // Check rate limiting
-    if (!checkRateLimit(clientIP)) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded. Please try again later.' },
-        { status: 429 }
-      );
-    }
-
     // Parse request body
-    const body = await request.json();
-    
+    const body = req.body;
+
     // Validate input
     const validationResult = validateExtractionRequest(body);
     if (!validationResult.isValid) {
-      return NextResponse.json(
-        { error: 'Invalid request', details: validationResult.errors },
-        { status: 400 }
-      );
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validationResult.errors,
+      });
     }
 
     const { url, viewport = 'both', includeShadows = false, userAgent } = body;
@@ -58,9 +51,11 @@ export async function POST(request: NextRequest) {
         // Log extraction metrics
         const processingTime = Date.now() - startTime;
         console.log(`Extraction completed for ${url} in ${processingTime}ms`);
-        console.log(`Mobile CSS: ${result.mobile.size} bytes, Desktop CSS: ${result.desktop.size} bytes`);
+        console.log(
+          `Mobile CSS: ${result.mobile.size} bytes, Desktop CSS: ${result.desktop.size} bytes`
+        );
 
-        return NextResponse.json({
+        res.json({
           success: true,
           url,
           viewport: 'both',
@@ -80,11 +75,11 @@ export async function POST(request: NextRequest) {
           },
           processingTime,
         });
-
       } else {
         // Extract for specific viewport
-        const viewportConfig = viewport === 'mobile' ? VIEWPORTS.mobile : VIEWPORTS.desktop;
-        
+        const viewportConfig =
+          viewport === 'mobile' ? VIEWPORTS.mobile : VIEWPORTS.desktop;
+
         const singleResult = await extractor.extractCriticalCSS({
           url,
           viewport: viewportConfig,
@@ -97,10 +92,12 @@ export async function POST(request: NextRequest) {
 
         // Log extraction metrics
         const processingTime = Date.now() - startTime;
-        console.log(`Extraction completed for ${url} (${viewport}) in ${processingTime}ms`);
+        console.log(
+          `Extraction completed for ${url} (${viewport}) in ${processingTime}ms`
+        );
         console.log(`CSS size: ${singleResult.size} bytes`);
 
-        return NextResponse.json({
+        res.json({
           success: true,
           url,
           viewport,
@@ -111,47 +108,54 @@ export async function POST(request: NextRequest) {
           processingTime,
         });
       }
-
     } finally {
       // Clean up extractor resources
       await extractor.close();
     }
-
   } catch (error) {
     const processingTime = Date.now() - startTime;
     console.error(`Extraction failed after ${processingTime}ms:`, error);
 
     if (error instanceof ValidationError) {
-      return NextResponse.json(
-        { error: 'Validation error', message: error.message, processingTime },
-        { status: 400 }
-      );
+      return res.status(400).json({
+        error: 'Validation error',
+        message: error.message,
+        processingTime,
+      });
     } else if (error instanceof CriticalExtractionError) {
-      return NextResponse.json(
-        { error: 'Extraction failed', message: error.message, processingTime },
-        { status: 500 }
-      );
+      return res.status(500).json({
+        error: 'Extraction failed',
+        message: error.message,
+        processingTime,
+      });
     } else {
-      return NextResponse.json(
-        { error: 'Internal server error', message: 'An unexpected error occurred', processingTime },
-        { status: 500 }
-      );
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'An unexpected error occurred',
+        processingTime,
+      });
     }
   }
-}
+});
 
-export async function GET() {
-  return NextResponse.json({
+/**
+ * GET /api/extract
+ * Method not allowed - extraction requires POST
+ */
+router.get('/extract', (req, res) => {
+  res.status(405).json({
     error: 'Method not allowed',
     message: 'Please use POST to extract critical CSS',
-  }, { status: 405 });
-}
+  });
+});
 
 /**
  * Validate extraction request body
+ * @param {Object} body - Request body
+ * @returns {Object} { isValid: boolean, errors: string[] }
  */
-function validateExtractionRequest(body: any): { isValid: boolean; errors: string[] } {
-  const errors: string[] = [];
+function validateExtractionRequest(body) {
+  const errors = [];
 
   // Check required fields
   if (!body.url || typeof body.url !== 'string') {
@@ -160,7 +164,7 @@ function validateExtractionRequest(body: any): { isValid: boolean; errors: strin
     // Validate URL format
     try {
       new URL(body.url);
-      
+
       // Check if URL is accessible (http/https)
       const url = new URL(body.url);
       if (!['http:', 'https:'].includes(url.protocol)) {
@@ -177,7 +181,10 @@ function validateExtractionRequest(body: any): { isValid: boolean; errors: strin
   }
 
   // Validate boolean options
-  if (body.includeShadows !== undefined && typeof body.includeShadows !== 'boolean') {
+  if (
+    body.includeShadows !== undefined &&
+    typeof body.includeShadows !== 'boolean'
+  ) {
     errors.push('includeShadows must be a boolean');
   }
 
@@ -191,26 +198,4 @@ function validateExtractionRequest(body: any): { isValid: boolean; errors: strin
   };
 }
 
-/**
- * Simple rate limiting function
- */
-function checkRateLimit(clientIP: string): boolean {
-  const now = Date.now();
-  const existing = requestCounts.get(clientIP);
-
-  if (!existing || now > existing.resetTime) {
-    // Reset or initialize counter
-    requestCounts.set(clientIP, {
-      count: 1,
-      resetTime: now + RATE_LIMIT.windowMs,
-    });
-    return true;
-  }
-
-  if (existing.count >= RATE_LIMIT.maxRequests) {
-    return false;
-  }
-
-  existing.count++;
-  return true;
-}
+module.exports = router;

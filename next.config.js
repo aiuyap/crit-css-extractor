@@ -1,18 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals = [
-        ...(config.externals || []),
-        {
-          'playwright-core': 'commonjs2 playwright-core',
-          '@sparticuz/chromium': 'commonjs2 @sparticuz/chromium',
-          'css-tree': 'commonjs css-tree',
-        },
-      ];
-    }
-    return config;
-  },
+  // Simple configuration - no externals needed
+  // All browser automation happens in backend API
 };
 
 module.exports = nextConfig;

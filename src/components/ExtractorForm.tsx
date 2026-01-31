@@ -136,7 +136,9 @@ export default function ExtractorForm({ initialUrl = '' }: ExtractorFormProps) {
     setProgressText('Extracting...');
 
     try {
-      const response = await fetch('/api/extract', {
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+
+      const response = await fetch(`${BACKEND_URL}/api/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formState),

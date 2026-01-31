@@ -1,18 +1,8 @@
-import { parse, type Rule, type Declaration } from 'css-tree';
-import type { CSSRule, Declaration as TypedDeclaration } from './types';
-import { CSS_CONSTANTS } from './constants';
+const { parse } = require('css-tree');
+const { CSS_CONSTANTS } = require('./constants');
 
-export interface CSSParsingOptions {
-  includeShadows?: boolean;
-  includeAnimations?: boolean;
-  includeTransitions?: boolean;
-  includeHoverStates?: boolean;
-}
-
-export class CSSParser {
-  private options: Required<CSSParsingOptions>;
-
-  constructor(options: CSSParsingOptions = {}) {
+class CSSParser {
+  constructor(options = {}) {
     this.options = {
       includeShadows: options.includeShadows ?? false,
       includeAnimations: options.includeAnimations ?? false,
@@ -24,7 +14,7 @@ export class CSSParser {
   /**
    * Parse CSS string into structured rules
    */
-  parseCSS(css: string): CSSRule[] {
+  parseCSS(css) {
     try {
       console.log(`Parsing CSS of length: ${css.length}`);
 
@@ -41,9 +31,9 @@ export class CSSParser {
         parseCustomProperty: true,
       });
 
-      const rules: CSSRule[] = [];
+      const rules = [];
 
-      const walk = (node: any, mediaQuery?: string): void => {
+      const walk = (node, mediaQuery) => {
         if (node.type === 'Rule') {
           const rule = processRule(node, mediaQuery);
           if (rule) {
@@ -74,7 +64,7 @@ export class CSSParser {
         }
       };
 
-      const processRule = (node: any, mediaQuery?: string): CSSRule | null => {
+      const processRule = (node, mediaQuery) => {
         if (!node.prelude || !node.block) return null;
 
         const selector = generateSelector(node.prelude);
@@ -90,7 +80,7 @@ export class CSSParser {
         };
       };
 
-      const processFontFace = (node: any): CSSRule | null => {
+      const processFontFace = (node) => {
         if (!node.block || !node.block.children) return null;
 
         const declarations = processDeclarations(node.block.children);
@@ -103,7 +93,7 @@ export class CSSParser {
         };
       };
 
-      const generateSelector = (prelude: any): string => {
+      const generateSelector = (prelude) => {
         // Handle Raw nodes (unparsed CSS)
         if (prelude.type === 'Raw') {
           return prelude.value?.trim() || '';
@@ -111,7 +101,7 @@ export class CSSParser {
 
         // Convert css-tree selector prelude to string
         if (prelude.type === 'SelectorList') {
-          const selectors: string[] = [];
+          const selectors = [];
           if (prelude.children) {
             for (const child of prelude.children) {
               const sel = generateSelector(child);
@@ -120,7 +110,7 @@ export class CSSParser {
           }
           return selectors.join(', ');
         } else if (prelude.type === 'Selector') {
-          const parts: string[] = [];
+          const parts = [];
           if (prelude.children) {
             for (const child of prelude.children) {
               if (child.type === 'TypeSelector') parts.push(child.name);
@@ -140,7 +130,7 @@ export class CSSParser {
               } else if (child.type === 'PseudoClassSelector') {
                 let pseudoStr = ':' + child.name;
                 if (child.children) {
-                  const childSelectors: string[] = [];
+                  const childSelectors = [];
                   for (const pc of child.children) {
                     childSelectors.push(generateSelector(pc));
                   }
@@ -163,7 +153,7 @@ export class CSSParser {
         return '';
       };
 
-      const generateMediaQuery = (prelude: any): string => {
+      const generateMediaQuery = (prelude) => {
         if (!prelude) return '';
 
         // Handle Raw nodes
@@ -173,7 +163,7 @@ export class CSSParser {
 
         // Handle MediaQueryList
         if (prelude.type === 'MediaQueryList' && prelude.children) {
-          const queries: string[] = [];
+          const queries = [];
           for (const child of prelude.children) {
             queries.push(generateMediaQuery(child));
           }
@@ -182,7 +172,7 @@ export class CSSParser {
 
         // Handle MediaQuery
         if (prelude.type === 'MediaQuery' && prelude.children) {
-          const parts: string[] = [];
+          const parts = [];
           for (const child of prelude.children) {
             parts.push(generateMediaQuery(child));
           }
@@ -208,7 +198,7 @@ export class CSSParser {
 
         // Generic children handling
         if (prelude.children) {
-          const parts: string[] = [];
+          const parts = [];
           for (const child of prelude.children) {
             parts.push(generateMediaQuery(child));
           }
@@ -218,8 +208,8 @@ export class CSSParser {
         return '';
       };
 
-      const processDeclarations = (children: any): TypedDeclaration[] => {
-        const declarations: TypedDeclaration[] = [];
+      const processDeclarations = (children) => {
+        const declarations = [];
 
         if (!children) return declarations;
 
@@ -243,7 +233,7 @@ export class CSSParser {
         return declarations;
       };
 
-      const generateValue = (valueNode: any): string => {
+      const generateValue = (valueNode) => {
         if (!valueNode) return '';
 
         // Handle Raw nodes
@@ -253,7 +243,7 @@ export class CSSParser {
 
         // Handle Value nodes (container for value children)
         if (valueNode.type === 'Value' && valueNode.children) {
-          const parts: string[] = [];
+          const parts = [];
           for (const child of valueNode.children) {
             parts.push(generateValue(child));
           }
@@ -269,7 +259,7 @@ export class CSSParser {
         if (valueNode.type === 'Percentage') return valueNode.value + '%';
         if (valueNode.type === 'Hash') return '#' + valueNode.value;
         if (valueNode.type === 'Function') {
-          const args: string[] = [];
+          const args = [];
           if (valueNode.children) {
             for (const child of valueNode.children) {
               args.push(generateValue(child));
@@ -286,7 +276,7 @@ export class CSSParser {
 
         // Generic children handling
         if (valueNode.children) {
-          const parts: string[] = [];
+          const parts = [];
           for (const child of valueNode.children) {
             parts.push(generateValue(child));
           }
@@ -296,7 +286,7 @@ export class CSSParser {
         return '';
       };
 
-      const shouldExcludeSelector = (selector: string): boolean => {
+      const shouldExcludeSelector = (selector) => {
         // Check for excluded selectors
         for (const excluded of CSS_CONSTANTS.EXCLUDED_SELECTORS) {
           if (selector.includes(excluded)) {
@@ -312,12 +302,9 @@ export class CSSParser {
         return false;
       };
 
-      const shouldIncludeProperty = (
-        property: string,
-        value: string
-      ): boolean => {
+      const shouldIncludeProperty = (property, value) => {
         // Check if property is allowed
-        if (!CSS_CONSTANTS.ALLOWED_PROPERTIES.includes(property as any)) {
+        if (!CSS_CONSTANTS.ALLOWED_PROPERTIES.includes(property)) {
           return false;
         }
 
@@ -366,14 +353,14 @@ export class CSSParser {
   /**
    * Filter CSS rules based on above-fold elements
    */
-  filterCSSRules(rules: CSSRule[], aboveFoldSelectors: Set<string>): CSSRule[] {
+  filterCSSRules(rules, aboveFoldSelectors) {
     // Convert to array for faster lookups
     const selectorArray = Array.from(aboveFoldSelectors);
 
     // Build lookup sets for different selector types
-    const tagSelectors = new Set<string>();
-    const classSelectors = new Set<string>();
-    const idSelectors = new Set<string>();
+    const tagSelectors = new Set();
+    const classSelectors = new Set();
+    const idSelectors = new Set();
 
     for (const sel of selectorArray) {
       if (sel.startsWith('#')) {
@@ -426,12 +413,7 @@ export class CSSParser {
   /**
    * Check if a CSS selector matches any of the above-fold element selectors
    */
-  private matchesSelector(
-    cssSelector: string,
-    tagSelectors: Set<string>,
-    classSelectors: Set<string>,
-    idSelectors: Set<string>
-  ): boolean {
+  matchesSelector(cssSelector, tagSelectors, classSelectors, idSelectors) {
     // Extract the parts of the CSS selector
     // For complex selectors like ".foo .bar > .baz", we check if any part matches
 
@@ -484,8 +466,8 @@ export class CSSParser {
   /**
    * Generate CSS string from rules
    */
-  generateCSS(rules: CSSRule[]): string {
-    const cssParts: string[] = [];
+  generateCSS(rules) {
+    const cssParts = [];
 
     for (const rule of rules) {
       let ruleCSS = '';
@@ -516,9 +498,9 @@ export class CSSParser {
   /**
    * Deduplicate CSS rules
    */
-  deduplicateRules(rules: CSSRule[]): CSSRule[] {
-    const seen = new Set<string>();
-    const uniqueRules: CSSRule[] = [];
+  deduplicateRules(rules) {
+    const seen = new Set();
+    const uniqueRules = [];
 
     for (const rule of rules) {
       const key = `${rule.selector}|${rule.mediaQuery || ''}`;
@@ -544,10 +526,8 @@ export class CSSParser {
   /**
    * Deduplicate declarations within a rule
    */
-  private deduplicateDeclarations(
-    declarations: TypedDeclaration[]
-  ): TypedDeclaration[] {
-    const seen = new Map<string, TypedDeclaration>();
+  deduplicateDeclarations(declarations) {
+    const seen = new Map();
 
     for (const decl of declarations) {
       const key = decl.property;
@@ -565,7 +545,7 @@ export class CSSParser {
   /**
    * Minify CSS output
    */
-  minifyCSS(css: string): string {
+  minifyCSS(css) {
     return css
       .replace(/\/\*[\s\S]*?\*\//g, '') // Remove comments
       .replace(/\s+/g, ' ') // Collapse whitespace
@@ -576,3 +556,5 @@ export class CSSParser {
       .trim();
   }
 }
+
+module.exports = { CSSParser };

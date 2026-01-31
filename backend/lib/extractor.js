@@ -1,18 +1,10 @@
-import type {
-  CriticalCSSOptions,
-  ExtractionResult,
-  PerformanceMetrics,
-} from './types';
-import { VIEWPORTS, PERFORMANCE_CONFIG } from './constants';
-import { CriticalExtractionError } from './errors';
-import { PlaywrightRenderer } from './playwright-renderer';
-import { CSSParser } from './css-parser';
-import { FontHandler } from './font-handler';
+const { VIEWPORTS, PERFORMANCE_CONFIG } = require('./constants');
+const { CriticalExtractionError } = require('./errors');
+const { PlaywrightRenderer } = require('./playwright-renderer');
+const { CSSParser } = require('./css-parser');
+const { FontHandler } = require('./font-handler');
 
-export class CriticalCSSExtractor {
-  private renderer: PlaywrightRenderer;
-  private cssParser: CSSParser;
-
+class CriticalCSSExtractor {
   constructor() {
     this.renderer = new PlaywrightRenderer();
     this.cssParser = new CSSParser();
@@ -21,9 +13,7 @@ export class CriticalCSSExtractor {
   /**
    * Extract critical CSS for a single URL and viewport
    */
-  async extractCriticalCSS(
-    options: CriticalCSSOptions
-  ): Promise<ExtractionResult> {
+  async extractCriticalCSS(options) {
     const startTime = Date.now();
     let renderingContext = null;
     const contextId = `${options.url}-${options.viewport.width}x${options.viewport.height}`;
@@ -45,14 +35,14 @@ export class CriticalCSSExtractor {
       console.log(`Found ${aboveFoldElements.length} above-fold elements`);
 
       // Collect selectors from above-fold elements
-      const aboveFoldSelectors = new Set<string>();
+      const aboveFoldSelectors = new Set();
       for (const elementInfo of aboveFoldElements) {
         aboveFoldSelectors.add(elementInfo.selector);
         // Also add individual classes for broader matching
         if (elementInfo.className) {
           const classes = elementInfo.className
             .split(' ')
-            .filter((c: string) => c.trim());
+            .filter((c) => c.trim());
           for (const cls of classes) {
             aboveFoldSelectors.add(`.${cls}`);
           }
@@ -137,7 +127,7 @@ export class CriticalCSSExtractor {
       } else {
         throw new CriticalExtractionError(
           `Failed to extract critical CSS for ${options.url}`,
-          error as Error
+          error
         );
       }
     } finally {
@@ -161,14 +151,7 @@ export class CriticalCSSExtractor {
   /**
    * Extract critical CSS for both mobile and desktop viewports
    */
-  async extractForBothViewports(
-    url: string,
-    options: Partial<CriticalCSSOptions> = {}
-  ): Promise<{
-    mobile: ExtractionResult;
-    desktop: ExtractionResult;
-    combined: string;
-  }> {
+  async extractForBothViewports(url, options = {}) {
     const baseOptions = {
       url,
       timeout: options.timeout || PERFORMANCE_CONFIG.DEFAULT_TIMEOUT,
@@ -204,10 +187,7 @@ export class CriticalCSSExtractor {
   /**
    * Combine mobile and desktop CSS using mobile-first approach
    */
-  private combineMobileDesktopCSS(
-    mobileCSS: string,
-    desktopCSS: string
-  ): string {
+  combineMobileDesktopCSS(mobileCSS, desktopCSS) {
     // Parse both CSS sets
     const mobileRules = this.cssParser.parseCSS(mobileCSS);
     const desktopRules = this.cssParser.parseCSS(desktopCSS);
@@ -226,7 +206,7 @@ export class CriticalCSSExtractor {
         // Add only the declarations that differ
         const mobileRule = combinedRules.find(
           (r) => r.selector === desktopRule.selector && !r.mediaQuery
-        )!;
+        );
 
         // Find declarations that are different or don't exist in mobile
         const desktopOnlyDeclarations = desktopRule.declarations.filter(
@@ -261,9 +241,7 @@ export class CriticalCSSExtractor {
   /**
    * Get detailed performance metrics for an extraction
    */
-  async getPerformanceMetrics(
-    options: CriticalCSSOptions
-  ): Promise<PerformanceMetrics> {
+  async getPerformanceMetrics(options) {
     let renderingContext = null;
     const contextId = `${options.url}-${options.viewport.width}x${options.viewport.height}`;
 
@@ -307,13 +285,9 @@ export class CriticalCSSExtractor {
   /**
    * Validate extraction result
    */
-  validateExtraction(result: ExtractionResult): {
-    isValid: boolean;
-    errors: string[];
-    warnings: string[];
-  } {
-    const errors: string[] = [];
-    const warnings: string[] = [];
+  validateExtraction(result) {
+    const errors = [];
+    const warnings = [];
 
     // Check if CSS is empty
     if (!result.criticalCSS.trim()) {
@@ -352,7 +326,9 @@ export class CriticalCSSExtractor {
   /**
    * Clean up all resources
    */
-  async close(): Promise<void> {
+  async close() {
     await this.renderer.close();
   }
 }
+
+module.exports = { CriticalCSSExtractor };

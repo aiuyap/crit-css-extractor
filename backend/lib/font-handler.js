@@ -1,67 +1,50 @@
-import type { Page } from 'playwright';
-import type { Declaration } from './types';
-
-export interface FontInfo {
-  fontFamily: string;
-  src: string;
-  fontDisplay: string;
-  fontWeight?: string;
-  fontStyle?: string;
-  unicodeRange?: string;
-}
-
-export interface FontUsage {
-  fontFamily: string;
-  elements: number;
-  totalCharacters: number;
-  isCritical: boolean;
-}
-
-export class FontHandler {
-  private page: Page;
-
-  constructor(page: Page) {
+class FontHandler {
+  constructor(page) {
     this.page = page;
   }
 
   /**
    * Get all @font-face rules from the page
    */
-  async getFontFaces(): Promise<FontInfo[]> {
+  async getFontFaces() {
     return await this.page.evaluate(() => {
-      const fontFaces: FontInfo[] = [];
+      const fontFaces = [];
 
       // Get @font-face rules from all stylesheets
       const styleSheets = Array.from(document.styleSheets);
-      
-      function extractFontFaces(sheet: CSSStyleSheet): FontInfo[] {
-        const faces: FontInfo[] = [];
-        
+
+      function extractFontFaces(sheet) {
+        const faces = [];
+
         try {
           for (const rule of Array.from(sheet.cssRules)) {
             if (rule.type === CSSRule.FONT_FACE_RULE) {
-              const fontFace = rule as CSSFontFaceRule;
+              const fontFace = rule;
               const style = fontFace.style;
-              
+
               faces.push({
                 fontFamily: style.getPropertyValue('font-family').trim(),
                 src: style.getPropertyValue('src').trim(),
-                fontDisplay: style.getPropertyValue('font-display').trim() || 'auto',
-                fontWeight: style.getPropertyValue('font-weight').trim() || undefined,
-                fontStyle: style.getPropertyValue('font-style').trim() || undefined,
-                unicodeRange: style.getPropertyValue('unicode-range').trim() || undefined,
+                fontDisplay:
+                  style.getPropertyValue('font-display').trim() || 'auto',
+                fontWeight:
+                  style.getPropertyValue('font-weight').trim() || undefined,
+                fontStyle:
+                  style.getPropertyValue('font-style').trim() || undefined,
+                unicodeRange:
+                  style.getPropertyValue('unicode-range').trim() || undefined,
               });
             }
           }
         } catch (e) {
           // CORS or other access issues - skip this stylesheet
         }
-        
+
         return faces;
       }
 
       for (const sheet of styleSheets) {
-        fontFaces.push(...extractFontFaces(sheet as CSSStyleSheet));
+        fontFaces.push(...extractFontFaces(sheet));
       }
 
       return fontFaces;
@@ -71,26 +54,28 @@ export class FontHandler {
   /**
    * Analyze font usage by visible text elements
    */
-  async analyzeFontUsage(): Promise<FontUsage[]> {
+  async analyzeFontUsage() {
     return await this.page.evaluate(() => {
-      const fontUsage = new Map<string, FontUsage>();
+      const fontUsage = new Map();
 
-      function getFontFamily(element: Element): string {
+      function getFontFamily(element) {
         const computedStyle = window.getComputedStyle(element);
         return computedStyle.getPropertyValue('font-family').trim();
       }
 
-      function getTextContent(element: Element): string {
+      function getTextContent(element) {
         const text = element.textContent || '';
         return text.trim();
       }
 
-      function isElementVisible(element: Element): boolean {
+      function isElementVisible(element) {
         const style = window.getComputedStyle(element);
-        
-        if (style.display === 'none' || 
-            style.visibility === 'hidden' || 
-            style.opacity === '0') {
+
+        if (
+          style.display === 'none' ||
+          style.visibility === 'hidden' ||
+          style.opacity === '0'
+        ) {
           return false;
         }
 
@@ -98,20 +83,20 @@ export class FontHandler {
         return rect.width > 0 && rect.height > 0;
       }
 
-      function isElementAboveFold(element: Element): boolean {
+      function isElementAboveFold(element) {
         const rect = element.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
         const buffer = 100;
-        
-        return rect.bottom > -buffer && rect.top < (viewportHeight + buffer);
+
+        return rect.bottom > -buffer && rect.top < viewportHeight + buffer;
       }
 
       // Analyze all text elements
       const allElements = Array.from(document.querySelectorAll('*'));
-      
+
       for (const element of allElements) {
         if (!isElementVisible(element)) continue;
-        
+
         const text = getTextContent(element);
         if (!text) continue;
 
@@ -127,10 +112,10 @@ export class FontHandler {
           });
         }
 
-        const usage = fontUsage.get(fontFamily)!;
+        const usage = fontUsage.get(fontFamily);
         usage.elements++;
         usage.totalCharacters += text.length;
-        
+
         if (isAboveFold) {
           usage.isCritical = true;
         }
@@ -143,28 +128,29 @@ export class FontHandler {
   /**
    * Generate critical @font-face rules based on usage
    */
-  async getCriticalFontFaces(): Promise<string> {
+  async getCriticalFontFaces() {
     const fontFaces = await this.getFontFaces();
     const fontUsage = await this.analyzeFontUsage();
 
     // Create a set of critical font families
     const criticalFontFamilies = new Set(
       fontUsage
-        .filter(usage => usage.isCritical)
-        .map(usage => usage.fontFamily)
+        .filter((usage) => usage.isCritical)
+        .map((usage) => usage.fontFamily)
     );
 
     // Generate CSS for critical fonts
-    const criticalFontCSS: string[] = [];
+    const criticalFontCSS = [];
 
     for (const fontFace of fontFaces) {
       // Check if this font family is used by critical content
       const isCritical = criticalFontFamilies.has(fontFace.fontFamily);
-      
+
       if (isCritical) {
         // Ensure font-display: swap for performance
-        const fontDisplay = fontFace.fontDisplay === 'auto' ? 'swap' : fontFace.fontDisplay;
-        
+        const fontDisplay =
+          fontFace.fontDisplay === 'auto' ? 'swap' : fontFace.fontDisplay;
+
         let css = `@font-face {
   font-family: ${fontFace.fontFamily};
   src: ${fontFace.src};
@@ -196,37 +182,41 @@ export class FontHandler {
   /**
    * Generate preload hints for critical fonts
    */
-  async generateFontPreloads(): Promise<string[]> {
+  async generateFontPreloads() {
     const fontFaces = await this.getFontFaces();
     const fontUsage = await this.analyzeFontUsage();
 
     // Create a set of critical font families
     const criticalFontFamilies = new Set(
       fontUsage
-        .filter(usage => usage.isCritical)
-        .map(usage => usage.fontFamily)
+        .filter((usage) => usage.isCritical)
+        .map((usage) => usage.fontFamily)
     );
 
-    const preloads: string[] = [];
+    const preloads = [];
 
     for (const fontFace of fontFaces) {
       if (criticalFontFamilies.has(fontFace.fontFamily)) {
         // Extract font URLs from src declaration
-        const urlMatches = fontFace.src.match(/url\(['"]?([^'")]+)['"]?\)/g);
-        
+        const urlMatches = fontFace.src.match(/url\(['"]?([^'"]+)['"]?\)/g);
+
         if (urlMatches) {
           for (const match of urlMatches) {
             const url = match.replace(/url\(['"]?|['"]?\)/g, '');
-            
+
             // Determine font type from extension
             let type = 'font/woff2'; // Default to woff2
             if (url.endsWith('.woff')) type = 'font/woff';
             else if (url.endsWith('.ttf')) type = 'font/ttf';
-            else if (url.endsWith('.eot')) type = 'application/vnd.ms-fontobject';
+            else if (url.endsWith('.eot'))
+              type = 'application/vnd.ms-fontobject';
             else if (url.endsWith('.svg')) type = 'image/svg+xml';
 
-            const crossorigin = url.startsWith('/') || url.startsWith('http') ? ' crossorigin' : '';
-            
+            const crossorigin =
+              url.startsWith('/') || url.startsWith('http')
+                ? ' crossorigin'
+                : '';
+
             preloads.push(
               `<link rel="preload" as="font" type="${type}" href="${url}"${crossorigin}>`
             );
@@ -241,26 +231,26 @@ export class FontHandler {
   /**
    * Get font loading performance metrics
    */
-  async getFontMetrics(): Promise<{
-    totalFonts: number;
-    criticalFonts: number;
-    fontLoadTime: number;
-    fontsUsed: string[];
-  }> {
+  async getFontMetrics() {
     return await this.page.evaluate(() => {
       // Get font loading timing
-      const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
-      const fontEntries = performance.getEntriesByType('resource').filter(entry => 
-        entry.name.includes('.woff') || entry.name.includes('.ttf') || entry.name.includes('.eot')
-      );
+      const navigation = performance.getEntriesByType('navigation')[0];
+      const fontEntries = performance
+        .getEntriesByType('resource')
+        .filter(
+          (entry) =>
+            entry.name.includes('.woff') ||
+            entry.name.includes('.ttf') ||
+            entry.name.includes('.eot')
+        );
 
       const totalFontLoadTime = fontEntries.reduce((total, entry) => {
-        const perfEntry = entry as any;
+        const perfEntry = entry;
         return total + (perfEntry.responseEnd - perfEntry.requestStart);
       }, 0);
 
       // Get fonts used on page
-      const fontsUsed = new Set<string>();
+      const fontsUsed = new Set();
       const allElements = Array.from(document.querySelectorAll('*'));
 
       for (const element of allElements) {
@@ -283,28 +273,30 @@ export class FontHandler {
   /**
    * Optimize font loading strategy
    */
-  async optimizeFontLoading(): Promise<{
-    css: string;
-    preloads: string[];
-    recommendations: string[];
-  }> {
+  async optimizeFontLoading() {
     const criticalFontCSS = await this.getCriticalFontFaces();
     const preloads = await this.generateFontPreloads();
     const fontMetrics = await this.getFontMetrics();
 
-    const recommendations: string[] = [];
+    const recommendations = [];
 
     // Generate recommendations based on analysis
     if (fontMetrics.totalFonts > 6) {
-      recommendations.push('Consider reducing the number of font families to improve performance');
+      recommendations.push(
+        'Consider reducing the number of font families to improve performance'
+      );
     }
 
     if (fontMetrics.fontLoadTime > 1000) {
-      recommendations.push('Font loading time is high - consider using font-display: swap and preloading critical fonts');
+      recommendations.push(
+        'Font loading time is high - consider using font-display: swap and preloading critical fonts'
+      );
     }
 
     if (preloads.length === 0) {
-      recommendations.push('No font preloads generated - consider adding preload hints for critical fonts');
+      recommendations.push(
+        'No font preloads generated - consider adding preload hints for critical fonts'
+      );
     }
 
     return {
@@ -314,3 +306,5 @@ export class FontHandler {
     };
   }
 }
+
+module.exports = { FontHandler };
